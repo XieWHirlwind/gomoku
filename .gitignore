@@ -1,4 +1,5 @@
 db
+output_files
 *.qpf
 *.qsf
 *.bak
