@@ -1,4 +1,4 @@
-module gomoku(CLOCK_50;
+module gomoku(CLOCK_50);
 	input CLOCK_50;
 	wire resetn, go;
 	wire in_x, in_y, in_color;
