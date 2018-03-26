@@ -13,72 +13,67 @@ module board7(clk, resetn, go, x, y, color, state);
 	input go;                       // load a stone onto the board
 	input [2:0] x, y;               // coordinates of new move played. x = row, y = col.
 	input color;                    // current player turn. 0 = black, 1 = white. game starts with black.
-	reg [1:0] board [6:0][6:0];     // 2d array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
-									// TODO: is this 2d array synthesizable (probably)?
-									// how to access this variable between modules?
-									// global var not synthesizable, so pass flattened 2d arrays between modules?
+	reg [1:0] board [7*7-1:0];      // flattened 2d array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
 	output reg [1:0] state;         // 0 = indeterminate, 1 = black win, 2 = white win.
 	
-	integer i, j;
+	integer i;
 	always@(posedge clk)
 	begin
 		if (!resetn)
 		begin
-			for (i = 0; i < 7; i = i + 1) begin
-				for (j = 0; j < 7; j = j + 1) begin
-					board[i][j] <= 2'b0;
-				end
+			for (i = 0; i < 7*7; i = i + 1) begin
+				board[i] <= 2'b0;
 			end
 		end
 		else if (go)
-			board[x][y] <= color + 2'd1;
+			board[7*x + y] <= color + 2'd1;
 	end
 	
 	// middle 9 points on 7x7 board
 	reg qc, qu, qur, qr, qdr, qd, qdl, ql, qul;
-	centernode nc(.x(3'd3), .y(3'd3), .q(qc)),
-		  nu(.x(3'd3), .y(3'd2), .q(qu)),
-		  nur(.x(3'd4), .y(3'd2), .q(qur)),
-		  nr(.x(3'd4), .y(3'd3), .q(qr)),
-		  ndr(.x(3'd4), .y(3'd4), .q(qdr)),
-		  nd(.x(3'd3), .y(3'd4), .q(qd)),
-		  ndl(.x(3'd2), .y(3'd4), .q(qdl)),
-		  nl(.x(3'd2), .y(3'd3), .q(ql)),
-		  nul(.x(3'd2), .y(3'd2), .q(qul));
+	centernode nc(.x(3'd3), .y(3'd3), .board(board), .q(qc)),
+		  nu(.x(3'd3), .y(3'd2), .board(board), .q(qu)),
+		  nur(.x(3'd4), .y(3'd2), .board(board), .q(qur)),
+		  nr(.x(3'd4), .y(3'd3), .board(board), .q(qr)),
+		  ndr(.x(3'd4), .y(3'd4), .board(board), .q(qdr)),
+		  nd(.x(3'd3), .y(3'd4), .board(board), .q(qd)),
+		  ndl(.x(3'd2), .y(3'd4), .board(board), .q(qdl)),
+		  nl(.x(3'd2), .y(3'd3), .board(board), .q(ql)),
+		  nul(.x(3'd2), .y(3'd2), .board(board), .q(qul));
 		  
 	// left edge
 	reg qlc, qlu, qld, ql2c, ql2u, ql2d;
-	edgenode nlc(.x(3'd0), .y(3'd3), .q(qlc)),
-			 nlu(.x(3'd0), .y(3'd2), .q(qlu)),
-			 nld(.x(3'd0), .y(3'd4), .q(qld)),
-			 nl2c(.x(3'd1), .y(3'd3), .q(ql2c)),
-			 nl2u(.x(3'd1), .y(3'd2), .q(ql2u)),
-			 nl2d(.x(3'd1), .y(3'd4), .q(ql2d));
+	edgenode nlc(.x(3'd0), .y(3'd3), .board(board), .q(qlc)),
+			 nlu(.x(3'd0), .y(3'd2), .board(board), .q(qlu)),
+			 nld(.x(3'd0), .y(3'd4), .board(board), .q(qld)),
+			 nl2c(.x(3'd1), .y(3'd3), .board(board), .q(ql2c)),
+			 nl2u(.x(3'd1), .y(3'd2), .board(board), .q(ql2u)),
+			 nl2d(.x(3'd1), .y(3'd4), .board(board), .q(ql2d));
 	
 	// right edge
 	reg qrc, qru, qrd, qr2c, qr2u, qr2d;
-	edgenode nrc(.x(3'd6), .y(3'd3), .q(qrc)),
-			 nru(.x(3'd6), .y(3'd2), .q(qru)),
-			 nrd(.x(3'd6), .y(3'd4), .q(qrd)),
-			 nr2c(.x(3'd5), .y(3'd3), .q(qr2c)),
-			 nr2u(.x(3'd5), .y(3'd2), .q(qr2u)),
-			 nr2d(.x(3'd5), .y(3'd4), .q(qr2d));
+	edgenode nrc(.x(3'd6), .y(3'd3), .board(board), .q(qrc)),
+			 nru(.x(3'd6), .y(3'd2), .board(board), .q(qru)),
+			 nrd(.x(3'd6), .y(3'd4), .board(board), .q(qrd)),
+			 nr2c(.x(3'd5), .y(3'd3), .board(board), .q(qr2c)),
+			 nr2u(.x(3'd5), .y(3'd2), .board(board), .q(qr2u)),
+			 nr2d(.x(3'd5), .y(3'd4), .board(board), .q(qr2d));
 	// top edge
 	reg qtc, qtl, qtr, qt2c, qt2l, qt2r;
-	edgenode ntc(.x(3'd3), .y(3'd0), .q(qtc)),
-			 ntl(.x(3'd2), .y(3'd0), .q(qtl)),
-			 ntr(.x(3'd4), .y(3'd0), .q(qtr)),
-			 nt2c(.x(3'd3), .y(3'd1), .q(qt2c)),
-			 nt2l(.x(3'd2), .y(3'd1), .q(qt2l)),
-			 nt2r(.x(3'd4), .y(3'd1), .q(qt2r));
+	edgenode ntc(.x(3'd3), .y(3'd0), .board(board), .q(qtc)),
+			 ntl(.x(3'd2), .y(3'd0), .board(board), .q(qtl)),
+			 ntr(.x(3'd4), .y(3'd0), .board(board), .q(qtr)),
+			 nt2c(.x(3'd3), .y(3'd1), .board(board), .q(qt2c)),
+			 nt2l(.x(3'd2), .y(3'd1), .board(board), .q(qt2l)),
+			 nt2r(.x(3'd4), .y(3'd1), .board(board), .q(qt2r));
 	// bottom edge
 	reg qdc, qdl, qdr, qd2c, qd2l, qd2r;
-	edgenode ndc(.x(3'd3), .y(3'd6), .q(qdc)),
-			 ndl(.x(3'd2), .y(3'd6), .q(qdl)),
-			 ndr(.x(3'd4), .y(3'd6), .q(qdr)),
-			 nd2c(.x(3'd3), .y(3'd5), .q(qd2c)),
-			 nd2l(.x(3'd2), .y(3'd5), .q(qd2l)),
-			 nd2r(.x(3'd4), .y(3'd5), .q(qd2r));
+	edgenode ndc(.x(3'd3), .y(3'd6), .board(board), .q(qdc)),
+			 ndl(.x(3'd2), .y(3'd6), .board(board), .q(qdl)),
+			 ndr(.x(3'd4), .y(3'd6), .board(board), .q(qdr)),
+			 nd2c(.x(3'd3), .y(3'd5), .board(board), .q(qd2c)),
+			 nd2l(.x(3'd2), .y(3'd5), .board(board), .q(qd2l)),
+			 nd2r(.x(3'd4), .y(3'd5), .board(board), .q(qd2r));
 	
 	always@(*)
 	begin
@@ -127,30 +122,31 @@ module board7(clk, resetn, go, x, y, color, state);
 	
 endmodule
 
-module centernode(x, y, q);
+module centernode(x, y, board, q);
 	input [2:0] x, y;
+	input reg [1:0] board [7*7-1:0];
 	output reg [1:0] q;
 	reg [1:0] c, l, l2, r, r2, u, u2, d, d2, ul, ul2, ur, ur2, dl, dl2, dr, dr2;
 	reg h, v, dil, dir;
 	always@(*)
 	begin
-		c = board7.board[x][y];
-		l = board7.board[x - 1][y];
-		l2 = board7.board[x - 2][y];
-		r = board7.board[x + 1][y];
-		r2 = board7.board[x + 2][y];
-		u = board7.board[x][y - 1];
-		u2 = board7.board[x][y - 2];
-		d = board7.board[x][y + 1];
-		d2 = board7.board[x][y + 2];
-		ul = board7.board[x - 1][y - 1];
-		ul2 = board7.board[x - 2][y - 2];
-		ur = board7.board[x + 1][y - 1];
-		ur2 = board7.board[x + 2][y - 2];
-		dl = board7.board[x - 1][y + 1];
-		dl2 = board7.board[x - 2][y + 2];
-		dr = board7.board[x + 1][y + 1];
-		dr2 = board7.board[x + 2][y + 2];
+		c = board[7*x + y];
+		l = board[7*(x - 1) + y ];
+		l2 = board[7*(x - 2) + y];
+		r = board[7*(x + 1) + y];
+		r2 = board[7*(x + 2) + y];
+		u = board[7*x + y - 1];
+		u2 = board[7*x + y - 2];
+		d = board[7*x + y + 1];
+		d2 = board[7*x + y + 2];
+		ul = board[7*(x - 1) + y - 1];
+		ul2 = board[7*(x - 2) + y - 2];
+		ur = board[7*(x + 1) + y - 1];
+		ur2 = board[7*(x + 2) + y - 2];
+		dl = board[7*(x - 1) + y + 1];
+		dl2 = board[7*(x - 2) + y + 2];
+		dr = board[7*(x + 1) + y + 1];
+		dr2 = board[7*(x + 2) + y + 2];
 		
 		h = l == c && l2 == c && r == c && r2 == c;
 		v = u == c && u2 == c && d == c && d2 == c;
@@ -161,22 +157,23 @@ module centernode(x, y, q);
 	end
 endmodule
 
-module edgenode(x, y, q);
+module edgenode(x, y, board, q);
 	input [2:0] x, y;
+	input reg [1:0] board [7*7-1:0];
 	output reg [1:0] q;
 	reg [1:0] c, u, u2, d, d2;
 	reg h, v;
 	always@(*)
 	begin
-		c = board7.board[x][y];
-		l = board7.board[x - 1][y];
-		l2 = board7.board[x - 2][y];
-		r = board7.board[x + 1][y];
-		r2 = board7.board[x + 2][y];
-		u = board7.board[x][y - 1];
-		u2 = board7.board[x][y - 2];
-		d = board7.board[x][y + 1];
-		d2 = board7.board[x][y + 2];
+		c = board[7*x + y];
+		l = board[7*(x - 1) + y ];
+		l2 = board[7*(x - 2) + y];
+		r = board[7*(x + 1) + y];
+		r2 = board[7*(x + 2) + y];
+		u = board[7*x + y - 1];
+		u2 = board[7*x + y - 2];
+		d = board[7*x + y + 1];
+		d2 = board[7*x + y + 2];
 		
 		h = l == c && l2 == c && r == c && r2 == c;
 		v = u == c && u2 == c && d == c && d2 == c;
