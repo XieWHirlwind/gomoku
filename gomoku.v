@@ -1,7 +1,8 @@
-module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
+module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX3, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
 	input CLOCK_50;
 	inout PS2_CLK, PS2_DAT;
 	input [3:0] KEY;
+	output [9:0] LEDR;
 	output [6:0] HEX0, HEX1, HEX3, HEX5;
 	output VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N;
 	output [9:0] VGA_R, VGA_G, VGA_B;
@@ -21,10 +22,15 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, 
 					hex5(.hex_digit(game_state), .segments(HEX5)); // game state
 	
 	reg left_lock, right_lock, up_lock, down_lock; // lock so it doesnt activate every clock tick
+	wire left_key, right_key, up_key, down_key;
+	assign left_key = left && ~left_lock;
+	assign right_key = right && ~right_lock;
+	assign up_key = up && ~up_lock;
+	assign down_key = down && ~down_lock;
 	
 	always@(posedge CLOCK_50)
 	begin
-		if (!resetn)
+		if (~resetn)
 		begin
 			left_lock <= 1'b0;
 			right_lock <= 1'b0;
@@ -34,41 +40,30 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, 
 			in_y <= 3'd3;
 		end
 		else begin
-			if (left && !left_lock)
-			begin
-				left_lock <= 1'b1;
+			left_lock <= left;
+			right_lock <= right;
+			up_lock <= up;
+			down_lock <= down;
+			
+			if (left_key)
 				in_x <= in_x == 3'd0 ? 3'd0 : in_x - 3'd1;
-			end
-			else if (!left)
-				left_lock <= 1'b0;
-				
-			if (right && !right_lock)
-			begin
-				right_lock <= 1'b1;
+			if (right_key)
 				in_x <= in_x == 3'd6 ? 3'd6 : in_x + 3'd1;
-			end
-			else if (!right)
-				up_lock <= 1'b0;
-				
-			if (up && !up_lock)
-			begin
-				up_lock <= 1'b1;
+			if (up_key)
 				in_y <= in_y == 3'd0 ? 3'd0 : in_y - 3'd1;
-			end
-			else if (!up)
-				up_lock <= 1'b0;
-				
-			if (down && !down_lock)
-			begin
-				down_lock <= 1'b1;
+			if (down_key)
 				in_y <= in_y == 3'd6 ? 3'd6 : in_y + 3'd1;
-			end
-			else if (!down)
-				down_lock <= 1'b0;
 		end
 	end
 	
-	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(enter), .x(in_x), .y(in_y), .color(in_color), .state(game_state));
+	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(enter), .x(in_x), .y(in_y), .color(in_color), .board_flat(board_flat), .state(game_state));
+	
+	wire [7*7*2-1:0] board_flat;
+	/*wire [1:0] board [7*7-1:0];
+	genvar i;
+	generate for (i = 0; i < 7*7; i = i + 1) begin:unflatten
+		assign board[i] = board_flat[2*i+1:2*i];
+	end endgenerate*/
 	
 	wire [2:0] vga_colour;
 	wire [7:0] vga_x;
@@ -92,11 +87,11 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, 
 		end
 	end
 	
-	localparam board_start_x = 31 - 7,
-				  board_start_y = 11 - 7;
+	localparam board_start_x = 8'd31 - 8'd7,
+				  board_start_y = 7'd11 - 7'd7;
 	
-	assign vga_x = board_start_x + in_x * (15 + 1) + cx; // coord to start drawing from
-	assign vga_y = board_start_y + in_y * (15 + 1) + cy;
+	assign vga_x = board_start_x + in_x * (8'd15 + 8'd1) + cx; // coord to start drawing from
+	assign vga_y = board_start_y + in_y * (7'd15 + 7'd1) + cy;
 	
 	reg [14:0] circle [14:0];
 	always@(*)
@@ -136,7 +131,8 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, 
 	
 	wire load_x, load_y, load_colour;
 	wire go;
-	assign go = enter;
+	assign go = enter /*&& board[in_x][in_y] == 2'd0*/;
+	assign LEDR[0] = go;
 	
 	always@(negedge go) // might not work cuz of delays and stuff
 	begin
@@ -145,20 +141,20 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, 
 	
 endmodule
 
-module board7(clk, resetn, go, x, y, color, state);
+module board7(clk, resetn, go, x, y, color, board_flat, state);
 	input clk;
 	input resetn;
 	input go;                            // load a stone onto the board
 	input [2:0] x, y;                    // coordinates of new move played. x = row, y = col.
 	input color;                         // current player turn. 0 = black, 1 = white. game starts with black.
 	reg [1:0] board [7*7-1:0];           // 7x7 array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
-	wire [7*7*2-1:0] board_flat;  // flattened board array for passing to modules
+	output wire [7*7*2-1:0] board_flat;  // flattened board array for passing to modules
 	output reg [1:0] state;              // 0 = indeterminate, 1 = black win, 2 = white win.
 	
 	integer i;
 	always@(posedge clk)
 	begin
-		if (!resetn)
+		if (~resetn)
 		begin
 			for (i = 0; i < 7*7; i = i + 1) begin
 				board[i] <= 2'b0;
