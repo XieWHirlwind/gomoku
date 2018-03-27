@@ -1,5 +1,8 @@
 db
+incremental_db
+simulation
 output_files
 *.qpf
 *.qsf
 *.bak
+c5_pin_model_dump.txt

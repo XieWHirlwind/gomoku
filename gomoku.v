@@ -1,30 +1,159 @@
-module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY);
+module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, HEX0, HEX1, HEX3, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
 	input CLOCK_50;
 	inout PS2_CLK, PS2_DAT;
 	input [3:0] KEY;
+	output [6:0] HEX0, HEX1, HEX3, HEX5;
+	output VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N;
+	output [9:0] VGA_R, VGA_G, VGA_B;
+	
+	wire resetn;
+	assign resetn = KEY[0];
+	
 	wire w, a, s, d, left, right, up, down, space, enter;
-	wire in_x, in_y, in_color;
 	wire [1:0] game_state;
 	
-	board7 game_board(.clk(CLOCK_50), .resetn(KEY[0]), .go(enter), .x(in_x), .y(in_y), .color(in_color), .state(game_state));
+	reg in_x = 3'd3, in_y = 3'd3;
+	reg in_color = 1'b0;
 	
-	keyboard_tracker #(.PULSE_OR_HOLD(0)) keyboard(.clock(CLOCK_50), .reset(KEY[0]),
+	hex_decoder hex0(.hex_digit(in_y), .segments(HEX0)), // y coord
+					hex1(.hex_digit(in_x), .segments(HEX1)), // x coord
+					hex3(.hex_digit(in_color), .segments(HEX3)), // input color
+					hex5(.hex_digit(game_state), .segments(HEX5)); // game state
+	
+	reg left_lock, right_lock, up_lock, down_lock; // lock so it doesnt activate every clock tick
+	
+	always@(posedge CLOCK_50)
+	begin
+		if (!resetn)
+		begin
+			left_lock <= 1'b0;
+			right_lock <= 1'b0;
+			up_lock <= 1'b0;
+			down_lock <= 1'b0;
+			in_x <= 3'd3;
+			in_y <= 3'd3;
+		end
+		else begin
+			if (left && !left_lock)
+			begin
+				left_lock <= 1'b1;
+				in_x <= in_x == 3'd0 ? 3'd0 : in_x - 3'd1;
+			end
+			else if (!left)
+				left_lock <= 1'b0;
+				
+			if (right && !right_lock)
+			begin
+				right_lock <= 1'b1;
+				in_x <= in_x == 3'd6 ? 3'd6 : in_x + 3'd1;
+			end
+			else if (!right)
+				up_lock <= 1'b0;
+				
+			if (up && !up_lock)
+			begin
+				up_lock <= 1'b1;
+				in_y <= in_y == 3'd0 ? 3'd0 : in_y - 3'd1;
+			end
+			else if (!up)
+				up_lock <= 1'b0;
+				
+			if (down && !down_lock)
+			begin
+				down_lock <= 1'b1;
+				in_y <= in_y == 3'd6 ? 3'd6 : in_y + 3'd1;
+			end
+			else if (!down)
+				down_lock <= 1'b0;
+		end
+	end
+	
+	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(enter), .x(in_x), .y(in_y), .color(in_color), .state(game_state));
+	
+	wire [2:0] vga_colour;
+	wire [7:0] vga_x;
+	wire [6:0] vga_y;
+	wire writeEn;
+	
+	assign vga_colour = in_color ? 3'b111 : 3'b000;
+	
+	reg [3:0] cx = 4'd0, cy = 4'd0;
+	
+	always@(posedge CLOCK_50)
+	begin
+		if (go) begin
+			cy <= cy + 1;
+			if (cy == 4'd0)
+				cx <= cx + 1;
+		end
+		else begin
+			cx <= 4'd0;
+			cy <= 4'd0;
+		end
+	end
+	
+	localparam board_start_x = 31 - 7,
+				  board_start_y = 11 - 7;
+	
+	assign vga_x = board_start_x + in_x * (15 + 1) + cx; // coord to start drawing from
+	assign vga_y = board_start_y + in_y * (15 + 1) + cy;
+	
+	reg [14:0] circle [14:0];
+	always@(*)
+	begin
+		circle[0] = 15'b000001111100000;
+		circle[1] = 15'b000111111111000;
+		circle[2] = 15'b001111111111100;
+		circle[3] = 15'b011111111111110;
+		circle[4] = 15'b011111111111110;
+		circle[5] = 15'b111111111111111;
+		circle[6] = 15'b111111111111111;
+		circle[7] = 15'b111111111111111;
+		circle[8] = 15'b111111111111111;
+		circle[9] = 15'b111111111111111;
+		circle[10] = 15'b011111111111110;
+		circle[11] = 15'b011111111111110;
+		circle[12] = 15'b001111111111100;
+		circle[13] = 15'b000111111111000;
+		circle[14] = 15'b000001111100000;
+	end
+	
+	assign writeEn = go && circle[cx][cy];
+	
+	keyboard_tracker #(.PULSE_OR_HOLD(0)) keyboard(.clock(CLOCK_50), .reset(resetn),
 																  .PS2_CLK(PS2_CLK), .PS2_DAT(PS2_DAT),
 																  .w(w), .a(a), .s(s), .d(d),
 																  .left(left), .right(right), .up(up), .down(down),
 																  .space(space), .enter(enter));
+																  
+	vga_adapter VGA(.resetn(resetn), .clock(CLOCK_50),
+						 .colour(vga_colour), .x(vga_x), .y(vga_y), .plot(writeEn), 
+						 .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B), .VGA_HS(VGA_HS), .VGA_VS(VGA_VS), .VGA_BLANK(VGA_BLANK_N), .VGA_SYNC(VGA_SYNC_N), .VGA_CLK(VGA_CLK));
+	defparam VGA.RESOLUTION = "160x120";
+	defparam VGA.MONOCHROME = "FALSE";
+	defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
+	defparam VGA.BACKGROUND_IMAGE = "img/board.mif";
+	
+	wire load_x, load_y, load_colour;
+	wire go;
+	assign go = enter;
+	
+	always@(negedge go) // might not work cuz of delays and stuff
+	begin
+		in_color <= !in_color;
+	end
 	
 endmodule
 
 module board7(clk, resetn, go, x, y, color, state);
 	input clk;
 	input resetn;
-	input go;                       // load a stone onto the board
-	input [2:0] x, y;               // coordinates of new move played. x = row, y = col.
-	input color;                    // current player turn. 0 = black, 1 = white. game starts with black.
-	reg [1:0] board [7*7-1:0];      // 7x7 array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
-	wire [7*7*2-1:0] board_flat;     // flattened board array for passing to modules
-	output reg [1:0] state;         // 0 = indeterminate, 1 = black win, 2 = white win.
+	input go;                            // load a stone onto the board
+	input [2:0] x, y;                    // coordinates of new move played. x = row, y = col.
+	input color;                         // current player turn. 0 = black, 1 = white. game starts with black.
+	reg [1:0] board [7*7-1:0];           // 7x7 array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
+	wire [7*7*2-1:0] board_flat;  // flattened board array for passing to modules
+	output reg [1:0] state;              // 0 = indeterminate, 1 = black win, 2 = white win.
 	
 	integer i;
 	always@(posedge clk)
@@ -168,7 +297,7 @@ module node(x, y, board_flat, h, v, dil, dir);
 	always@(*)
 	begin
 		c = board[7*x + y];
-		l = board[7*(x - 1) + y ];
+		l = board[7*(x - 1) + y ];	
 		l2 = board[7*(x - 2) + y];
 		r = board[7*(x + 1) + y];
 		r2 = board[7*(x + 2) + y];
@@ -192,93 +321,28 @@ module node(x, y, board_flat, h, v, dil, dir);
 	end
 endmodule
 
-	
-	/*function get_state;
-		input [4:0] cx, cy;
-		input ccolor;
-		reg [2:0] counter [7:0]; // counter for each direction
-		reg [2:0] dir;
-		
-		reg [9:0] neighbours [7:0];
-		assign neighbours = get_neighbours(cx, cy);
-		
-		reg [2:0] i;
-		reg [1:0] j;
-		
-		always @(*)
-		begin
-			for (i = 0; i < 8; i += 1)
-			begin
-				if (board[neighbours[i][9:5]][neighbours[i][4:0]] == ccolor)
-				begin
-					j = get_state_helper(cx, cy, ccolor, i);
-					counter[i] = j;
-					// helper func to check in this direction 4 times
-					// helper func returns the amount of times it goes in that direction
-					// += to the counter
-				end
-				//end
-			end
-			get_state = (counter[0] + counter[4] >= 4 || counter[1] + counter[5] >= 4 || counter[2] + counter[6] >= 4 || counter[3] + counter[7] >= 4) ? ccolor : 0;
-		end
-		
-	endfunction
-	
-	
-	
-	function get_state_helper;
-		input [4:0] hx, hy;
-		input hcolor;
-		input [2:0] dir;
-		
-		reg [2:0] j0, j1, j2, j3;
-		reg [9:0] j0_neighbours [7:0];
-		reg [9:0] j1_neighbours [7:0];
-		reg [9:0] j2_neighbours [7:0];
-		reg [9:0] j3_neighbours [7:0];
-		assign j0_neighbours = get_neighbours(hx, hy);
-		assign j0 = j0_neighbours[dir];
-		assign j0_value = board[j0[9:5]][j0[4:0]] == hcolor;
-		
-		assign j1_neighbours = get_neighbours(j0[9:5], j0[4:0])
-		assign j1 = j1_neighbours[dir];
-		assign j1_value = board[j1[9:5]][j1[4:0]] == hcolor;
-		
-		assign j2_neighbours = get_neighbours(j1[9:5], j1[4:0])
-		assign j2 = j2_neighbours[dir];
-		assign j2_value = board[j2[9:5]][j2[4:0]] == hcolor;
-		
-		assign j3_neighbours = get_neighbours(j2[9:5], j2[4:0])
-		assign j3 = j3_neighbours[dir];
-		assign j3_value = board[j3[9:5]][j3[4:0]] == hcolor;
-		
-		assign get_state_helper = j0_value + j1_value + j2_value + j3_value;
-		
-	endfunction
-	
-	function get_neighbours;
-		input [4:0] ix, iy;
-		reg [9:0] neighbours [7:0];  // first 5 bits are x, 5 bits after are y. 0 is top, goes cw.
-		
-		reg [4:0] ix_p1, ix_m1, iy_p1, iy_m1; // calculate for edge cases so we dont have values that are out of bounds
-		
-		assign ix_p1 = ix == 5'd18 ? ix - 1 : ix + 1;
-		assign ix_m1 = ix == 5'd0 ? ix + 1 : ix - 1;
-		assign iy_p1 = iy == 5'd18 ? iy - 1 : iy + 1;
-		assign iy_m1 = iy == 5'd0 ? iy + 1 : iy - 1;
-		
-		always@(*)
-		begin
-			neighbours[0] = {ix, iy_m1};
-			neighbours[1] = {ix_p1, iy_m1};
-			neighbours[2] = {ix_p1, iy};
-			neighbours[3] = {ix_p1, iy_p1};
-			neighbours[4] = {ix, iy_p1};
-			neighbours[5] = {ix_p1, iy_p1};
-			neighbours[6] = {ix_p1, iy};
-			neighbours[7] = {ix_p1, iy_p1};
-			get_neighbours = neighbours;
-		end
-		
-	endfunction*/
-
+module hex_decoder(hex_digit, segments);
+    input [3:0] hex_digit;
+    output reg [6:0] segments;
+   
+    always @(*)
+        case (hex_digit)
+            4'h0: segments = 7'b100_0000;
+            4'h1: segments = 7'b111_1001;
+            4'h2: segments = 7'b010_0100;
+            4'h3: segments = 7'b011_0000;
+            4'h4: segments = 7'b001_1001;
+            4'h5: segments = 7'b001_0010;
+            4'h6: segments = 7'b000_0010;
+            4'h7: segments = 7'b111_1000;
+            4'h8: segments = 7'b000_0000;
+            4'h9: segments = 7'b001_1000;
+            4'hA: segments = 7'b000_1000;
+            4'hB: segments = 7'b000_0011;
+            4'hC: segments = 7'b100_0110;
+            4'hD: segments = 7'b010_0001;
+            4'hE: segments = 7'b000_0110;
+            4'hF: segments = 7'b000_1110;   
+            default: segments = 7'h7f;
+        endcase
+endmodule
