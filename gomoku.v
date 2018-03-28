@@ -1,9 +1,10 @@
-module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX3, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
+module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
 	input CLOCK_50;
 	inout PS2_CLK, PS2_DAT;
+	//input [9:0] SW;
 	input [3:0] KEY;
 	output [9:0] LEDR;
-	output [6:0] HEX0, HEX1, HEX3, HEX5;
+	output [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
 	output VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N;
 	output [9:0] VGA_R, VGA_G, VGA_B;
 	
@@ -13,14 +14,18 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX3, HEX5, VGA
 	wire w, a, s, d, left, right, up, down, space, enter;
 	wire [1:0] game_state;
 	
-	reg in_x = 3'd3, in_y = 3'd3;
+	//wire in_x = SW[5:3], in_y = SW[2:0];
+	reg [2:0] in_x = 3'd3, in_y = 3'd3;
 	reg in_color = 1'b0;
 	
 	hex_decoder hex0(.hex_digit(in_y), .segments(HEX0)), // y coord
 					hex1(.hex_digit(in_x), .segments(HEX1)), // x coord
-					hex3(.hex_digit(in_color), .segments(HEX3)), // input color
-					hex5(.hex_digit(game_state), .segments(HEX5)); // game state
+					hex2(.hex_digit(in_color), .segments(HEX2)), // input color
+					hex3(.hex_digit(game_state), .segments(HEX3)), // game state
+					hex4(.hex_digit(board[7*in_x + in_y]), .segments(HEX4)), // stone at game logic board coordinate
+					hex5(.hex_digit(display_board[7*in_x + in_y]), .segments(HEX5)); // stone at display board coordinate
 	
+	// keyboard stuff
 	reg left_lock, right_lock, up_lock, down_lock; // lock so it doesnt activate every clock tick
 	wire left_key, right_key, up_key, down_key;
 	assign left_key = left && ~left_lock;
@@ -56,14 +61,21 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX3, HEX5, VGA
 		end
 	end
 	
-	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(enter), .x(in_x), .y(in_y), .color(in_color), .board_flat(board_flat), .state(game_state));
+	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(go), .x(in_x), .y(in_y), .color(in_color), .board_flat(board_flat), .state(game_state));
+	
+	reg display_board [7*7-1:0];
+	integer j;
+	initial begin
+		for (j = 0; j < 7*7; j = j + 1)
+			display_board[j] <= 1'b0;
+	end
 	
 	wire [7*7*2-1:0] board_flat;
-	/*wire [1:0] board [7*7-1:0];
+	wire [1:0] board [7*7-1:0];
 	genvar i;
 	generate for (i = 0; i < 7*7; i = i + 1) begin:unflatten
 		assign board[i] = board_flat[2*i+1:2*i];
-	end endgenerate*/
+	end endgenerate
 	
 	wire [2:0] vga_colour;
 	wire [7:0] vga_x;
@@ -77,9 +89,11 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX3, HEX5, VGA
 	always@(posedge CLOCK_50)
 	begin
 		if (go) begin
-			cy <= cy + 1;
-			if (cy == 4'd0)
-				cx <= cx + 1;
+			cx <= cx + 1;
+			if (cx == 4'd14) begin
+				cx <= 0;
+				cy <= cy == 4'd14 ? 0 : cy + 1;
+			end
 		end
 		else begin
 			cx <= 4'd0;
@@ -127,15 +141,29 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX3, HEX5, VGA
 	defparam VGA.RESOLUTION = "160x120";
 	defparam VGA.MONOCHROME = "FALSE";
 	defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
-	defparam VGA.BACKGROUND_IMAGE = "img/board.mif";
+	defparam VGA.BACKGROUND_IMAGE = "img/board.colour.mif";
+	
+	/* // reset vga frame buffer
+	always@(posedge CLOCK_50)
+	begin
+		if (~resetn) begin															  
+			vga_adapter VGA2(.resetn(resetn), .clock(CLOCK_50),
+								 .colour(vga_colour), .x(vga_x), .y(vga_y), .plot(writeEn), 
+								 .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B), .VGA_HS(VGA_HS), .VGA_VS(VGA_VS), .VGA_BLANK(VGA_BLANK_N), .VGA_SYNC(VGA_SYNC_N), .VGA_CLK(VGA_CLK));
+			defparam VGA2.RESOLUTION = "160x120";
+			defparam VGA2.MONOCHROME = "FALSE";
+			defparam VGA2.BITS_PER_COLOUR_CHANNEL = 1;
+			defparam VGA2.BACKGROUND_IMAGE = "img/board.colour.mif";
+		end
+	end*/
 	
 	wire load_x, load_y, load_colour;
 	wire go;
-	assign go = enter /*&& board[in_x][in_y] == 2'd0*/;
-	assign LEDR[0] = go;
+	assign go = /*~KEY[1];*/ enter && ~display_board[7*in_x + in_y];
 	
 	always@(negedge go) // might not work cuz of delays and stuff
 	begin
+		display_board[7*in_x + in_y] <= 1'b1;
 		in_color <= !in_color;
 	end
 	
@@ -160,7 +188,7 @@ module board7(clk, resetn, go, x, y, color, board_flat, state);
 				board[i] <= 2'b0;
 			end
 		end
-		else if (go)
+		else if (go && board[7*x + y] == 2'd0)
 			board[7*x + y] <= color + 2'd1;
 	end
 	
