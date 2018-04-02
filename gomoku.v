@@ -12,7 +12,7 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 	assign resetn = KEY[0];
 	
 	wire w, a, s, d, left, right, up, down, space, enter;
-	wire game_state;
+	wire game_state, game_win_color;
 	
 	//wire in_x = SW[5:3], in_y = SW[2:0];
 	reg [2:0] in_x = 3'd3, in_y = 3'd3;
@@ -22,8 +22,8 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 					hex1(.hex_digit(in_x), .segments(HEX1)), // x coord
 					hex2(.hex_digit(in_color), .segments(HEX2)), // input color
 					hex3(.hex_digit(game_state), .segments(HEX3)), // game state
-					hex4(.hex_digit(board[7*in_x + in_y]), .segments(HEX4)), // stone at game logic board coordinate
-					hex5(.hex_digit(display_board[7*in_x + in_y]), .segments(HEX5)); // stone at display board coordinate
+					hex4(.hex_digit(game_win_color), .segments(HEX4)), // win color
+					hex5(.hex_digit(board[7*in_x + in_y]), .segments(HEX5)); // stone at game logic board coordinate
 	
 	// keyboard stuff
 	reg left_lock, right_lock, up_lock, down_lock; // lock so it doesnt activate every clock tick
@@ -61,7 +61,7 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 		end
 	end
 	
-	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(go), .x(in_x), .y(in_y), .color(in_color), .board_flat(board_flat), .state(game_state));
+	board7 game_board(.clk(CLOCK_50), .resetn(resetn), .go(go), .x(in_x), .y(in_y), .color(in_color), .board_flat(board_flat), .state(game_state), .win_color(game_win_color));
 	
 	reg display_board [7*7-1:0];
 	integer j;
@@ -169,7 +169,7 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 	
 endmodule
 
-module board7(clk, resetn, go, x, y, color, board_flat, state);
+module board7(clk, resetn, go, x, y, color, board_flat, state, win_color);
 	input clk;
 	input resetn;
 	input go;                            // load a stone onto the board
@@ -178,6 +178,7 @@ module board7(clk, resetn, go, x, y, color, board_flat, state);
 	reg [1:0] board [7*7-1:0];           // 7x7 array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
 	output wire [7*7*2-1:0] board_flat;  // flattened board array for passing to modules
 	output wire state;                   // 0 = no win yet, 1 = (color) has won
+	output reg win_color;                // 0 = black, 1 = white
 	
 	initial begin
 		for (i = 0; i < 7*7; i = i + 1)
@@ -220,6 +221,11 @@ module board7(clk, resetn, go, x, y, color, board_flat, state);
 	end endgenerate
 	
 	assign state = |q;
+	
+	always@(posedge state)
+	begin
+		win_color <= color;
+	end
 	
 	/*
 	// middle 9 points on 7x7 board
