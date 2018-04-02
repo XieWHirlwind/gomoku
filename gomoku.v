@@ -12,7 +12,7 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 	assign resetn = KEY[0];
 	
 	wire w, a, s, d, left, right, up, down, space, enter;
-	wire [1:0] game_state;
+	wire game_state;
 	
 	//wire in_x = SW[5:3], in_y = SW[2:0];
 	reg [2:0] in_x = 3'd3, in_y = 3'd3;
@@ -177,7 +177,12 @@ module board7(clk, resetn, go, x, y, color, board_flat, state);
 	input color;                         // current player turn. 0 = black, 1 = white. game starts with black.
 	reg [1:0] board [7*7-1:0];           // 7x7 array for board. for each coordinate, 0 = no move, 1 = black move, 2 = white move
 	output wire [7*7*2-1:0] board_flat;  // flattened board array for passing to modules
-	output reg [1:0] state;              // 0 = indeterminate, 1 = black win, 2 = white win.
+	output wire state;                   // 0 = no win yet, 1 = (color) has won
+	
+	initial begin
+		for (i = 0; i < 7*7; i = i + 1)
+			board[i] <= 2'b0;
+	end
 	
 	integer i;
 	always@(posedge clk)
@@ -197,6 +202,26 @@ module board7(clk, resetn, go, x, y, color, board_flat, state);
 		assign board_flat[2*j + 1:2*j] = board[j];
 	end endgenerate
 	
+	wire [(9+6*4)-1:0] q;
+	
+	genvar k, m;
+	generate for (k = 3'd2; k <= 3'd4; k = k + 3'd1) begin: nodes_outer
+		for (m = 3'd2; m <= 3'd4; m = m + 3'd1) begin: nodes_inner
+			centernode cn(.x(k), .y(m), .board_flat(board_flat), .q(q[3*(k - 2) + (m - 2)]));
+		end
+		edgenode en_x0(.x(3'd0), .y(k), .board_flat(board_flat), .q(q[9 + (k - 2)]);
+		edgenode en_x1(.x(3'd1), .y(k), .board_flat(board_flat), .q(q[12 + (k - 2)]);
+		edgenode en_x2(.x(3'd5), .y(k), .board_flat(board_flat), .q(q[15 + (k - 2)]);
+		edgenode en_x3(.x(3'd6), .y(k), .board_flat(board_flat), .q(q[18 + (k - 2)]);
+		edgenode en_y0(.x(k), .y(3'd0), .board_flat(board_flat), .q(q[21 + (k - 2)]);
+		edgenode en_y1(.x(k), .y(3'd1), .board_flat(board_flat), .q(q[24 + (k - 2)]);
+		edgenode en_y2(.x(k), .y(3'd5), .board_flat(board_flat), .q(q[27 + (k - 2)]);
+		edgenode en_y3(.x(k), .y(3'd6), .board_flat(board_flat), .q(q[30 + (k - 2)]);
+	end endgenerate
+	
+	assign state = |q;
+	
+	/*
 	// middle 9 points on 7x7 board
 	wire qc, qu, qur, qr, qdr, qd, qdl, ql, qul;
 	centernode nc(.x(3'd3), .y(3'd3), .board_flat(board_flat), .q(qc)),
@@ -286,7 +311,7 @@ module board7(clk, resetn, go, x, y, color, board_flat, state);
 
 		else state = 0;
 	end
-	
+	*/
 	
 endmodule
 
