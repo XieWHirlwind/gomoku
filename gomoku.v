@@ -210,14 +210,14 @@ module board7(clk, resetn, go, x, y, color, board_flat, state, win_color);
 		for (m = 3'd2; m <= 3'd4; m = m + 3'd1) begin: nodes_inner
 			centernode cn(.x(k), .y(m), .board_flat(board_flat), .q(q[3*(k - 2) + (m - 2)]));
 		end
-		edgenode en_x0(.x(3'd0), .y(k), .board_flat(board_flat), .q(q[9 + (k - 2)]);
-		edgenode en_x1(.x(3'd1), .y(k), .board_flat(board_flat), .q(q[12 + (k - 2)]);
-		edgenode en_x2(.x(3'd5), .y(k), .board_flat(board_flat), .q(q[15 + (k - 2)]);
-		edgenode en_x3(.x(3'd6), .y(k), .board_flat(board_flat), .q(q[18 + (k - 2)]);
-		edgenode en_y0(.x(k), .y(3'd0), .board_flat(board_flat), .q(q[21 + (k - 2)]);
-		edgenode en_y1(.x(k), .y(3'd1), .board_flat(board_flat), .q(q[24 + (k - 2)]);
-		edgenode en_y2(.x(k), .y(3'd5), .board_flat(board_flat), .q(q[27 + (k - 2)]);
-		edgenode en_y3(.x(k), .y(3'd6), .board_flat(board_flat), .q(q[30 + (k - 2)]);
+		edgenode en_x0(.x(3'd0), .y(k), .board_flat(board_flat), .q(q[9 + (k - 2)]));
+		edgenode en_x1(.x(3'd1), .y(k), .board_flat(board_flat), .q(q[12 + (k - 2)]));
+		edgenode en_x2(.x(3'd5), .y(k), .board_flat(board_flat), .q(q[15 + (k - 2)]));
+		edgenode en_x3(.x(3'd6), .y(k), .board_flat(board_flat), .q(q[18 + (k - 2)]));
+		edgenode en_y0(.x(k), .y(3'd0), .board_flat(board_flat), .q(q[21 + (k - 2)]));
+		edgenode en_y1(.x(k), .y(3'd1), .board_flat(board_flat), .q(q[24 + (k - 2)]));
+		edgenode en_y2(.x(k), .y(3'd5), .board_flat(board_flat), .q(q[27 + (k - 2)]));
+		edgenode en_y3(.x(k), .y(3'd6), .board_flat(board_flat), .q(q[30 + (k - 2)]));
 	end endgenerate
 	
 	assign state = |q;
