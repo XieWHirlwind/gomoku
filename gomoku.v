@@ -1,7 +1,6 @@
-module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
+module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, KEY, LEDR, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, VGA_CLK, VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_R, VGA_G, VGA_B);
 	input CLOCK_50;
 	inout PS2_CLK, PS2_DAT;
-	//input [9:0] SW;
 	input [3:0] KEY;
 	output [9:0] LEDR;
 	output [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
@@ -14,7 +13,6 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 	wire w, a, s, d, left, right, up, down, space, enter;
 	wire game_state, game_win_color;
 	
-	//wire in_x = SW[5:3], in_y = SW[2:0];
 	reg [2:0] in_x = 3'd3, in_y = 3'd3;
 	reg in_color = 1'b0;
 	
@@ -78,21 +76,52 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 	end endgenerate
 	
 	wire [2:0] vga_colour;
-	wire [7:0] vga_x;
-	wire [6:0] vga_y;
+	reg [7:0] vga_x;
+	reg [6:0] vga_y;
 	wire writeEn;
 	
-	assign vga_colour = in_color ? 3'b111 : 3'b000;
+	assign vga_colour = (game_state ? game_win_color : in_color) ? 3'b111 : 3'b000;
 	
 	reg [3:0] cx = 4'd0, cy = 4'd0;
 	
+	reg display_game_state = 0;
+	reg cz_en = 0;
+	reg [8:0] cz = 9'd0;
+	
 	always@(posedge CLOCK_50)
 	begin
-		if (go) begin
+		if (~resetn) begin
+			display_game_state <= 0;
+			cz_en <= 0;
+			cz <= 0;
+		end
+		else
+		begin
+			if (game_state)
+				cz <= cz + 1;
+			if (cz == 9'd250) begin
+				display_game_state <= 1;
+				cz_en <= 1;
+			end
+			if (cz == 9'd350)
+				cz_en <= 0;
+		end
+	end
+	
+	always@(posedge CLOCK_50)
+	begin
+		if (display_game_state) begin
 			cx <= cx + 1;
 			if (cx == 4'd14) begin
 				cx <= 0;
-				cy <= cy == 4'd14 ? 0 : cy + 1;
+				cy <= cy >= 4'd4 ? 0 : cy + 1;
+			end
+		end
+		else if (go) begin
+			cx <= cx + 1;
+			if (cx == 4'd14) begin
+				cx <= 0;
+				cy <= cy >= 4'd14 ? 0 : cy + 1;
 			end
 		end
 		else begin
@@ -101,11 +130,22 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 		end
 	end
 	
-	localparam board_start_x = 8'd31 - 8'd7,
+	localparam board_start_x = 8'd31 - 8'd7, // coords to start drawing from
 				  board_start_y = 7'd11 - 7'd7;
 	
-	assign vga_x = board_start_x + in_x * (8'd15 + 8'd1) + cx; // coord to start drawing from
-	assign vga_y = board_start_y + in_y * (7'd15 + 7'd1) + cy;
+	always@(*)
+	begin
+		case (display_game_state)
+			1: begin
+				vga_x = wintxt_start_x + cx;
+				vga_y = wintxt_start_y + cy;
+			end
+			0: begin
+				vga_x = board_start_x + in_x * (8'd15 + 8'd1) + cx;
+				vga_y = board_start_y + in_y * (7'd15 + 7'd1) + cy;
+			end
+		endcase
+	end
 	
 	reg [14:0] circle [14:0];
 	always@(*)
@@ -127,7 +167,20 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 		circle[14] = 15'b000001111100000;
 	end
 	
-	assign writeEn = go && circle[cx][cy];
+	assign writeEn = ((display_game_state && cz_en) && wintxt[cy][cx]) || (go && circle[cy][cx]);
+	
+	localparam wintxt_start_x = 8'd2,
+				  wintxt_start_y = 7'd2;
+				  
+	reg [0:14] wintxt [4:0];
+	always@(*)
+	begin
+		wintxt[0] = 15'b101010111010001;
+		wintxt[1] = 15'b101010010011001;
+		wintxt[2] = 15'b101010010010101;
+		wintxt[3] = 15'b101010010010011;
+		wintxt[4] = 15'b010100111010001;
+	end
 	
 	keyboard_tracker #(.PULSE_OR_HOLD(0)) keyboard(.clock(CLOCK_50), .reset(resetn),
 																  .PS2_CLK(PS2_CLK), .PS2_DAT(PS2_DAT),
@@ -143,25 +196,11 @@ module gomoku(CLOCK_50, PS2_CLK, PS2_DAT, /*SW, */KEY, LEDR, HEX0, HEX1, HEX2, H
 	defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
 	defparam VGA.BACKGROUND_IMAGE = "img/board.colour.mif";
 	
-	/* // reset vga frame buffer
-	always@(posedge CLOCK_50)
-	begin
-		if (~resetn) begin															  
-			vga_adapter VGA2(.resetn(resetn), .clock(CLOCK_50),
-								 .colour(vga_colour), .x(vga_x), .y(vga_y), .plot(writeEn), 
-								 .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B), .VGA_HS(VGA_HS), .VGA_VS(VGA_VS), .VGA_BLANK(VGA_BLANK_N), .VGA_SYNC(VGA_SYNC_N), .VGA_CLK(VGA_CLK));
-			defparam VGA2.RESOLUTION = "160x120";
-			defparam VGA2.MONOCHROME = "FALSE";
-			defparam VGA2.BITS_PER_COLOUR_CHANNEL = 1;
-			defparam VGA2.BACKGROUND_IMAGE = "img/board.colour.mif";
-		end
-	end*/
-	
 	wire load_x, load_y, load_colour;
 	wire go;
-	assign go = /*~KEY[1];*/ enter && ~display_board[7*in_x + in_y];
+	assign go = (enter && ~display_board[7*in_x + in_y]) && ~display_game_state;
 	
-	always@(negedge go) // might not work cuz of delays and stuff
+	always@(negedge go)
 	begin
 		display_board[7*in_x + in_y] <= 1'b1;
 		in_color <= !in_color;
@@ -194,7 +233,7 @@ module board7(clk, resetn, go, x, y, color, board_flat, state, win_color);
 				board[i] <= 2'b0;
 			end
 		end
-		else if (go && board[7*x + y] == 2'd0)
+		else if (go && board[7*x + y] == 2'd0 && !state)
 			board[7*x + y] <= color + 2'd1;
 	end
 	
@@ -226,98 +265,6 @@ module board7(clk, resetn, go, x, y, color, board_flat, state, win_color);
 	begin
 		win_color <= color;
 	end
-	
-	/*
-	// middle 9 points on 7x7 board
-	wire qc, qu, qur, qr, qdr, qd, qdl, ql, qul;
-	centernode nc(.x(3'd3), .y(3'd3), .board_flat(board_flat), .q(qc)),
-		  nu(.x(3'd3), .y(3'd2), .board_flat(board_flat), .q(qu)),
-		  nur(.x(3'd4), .y(3'd2), .board_flat(board_flat), .q(qur)),
-		  nr(.x(3'd4), .y(3'd3), .board_flat(board_flat), .q(qr)),
-		  ndr(.x(3'd4), .y(3'd4), .board_flat(board_flat), .q(qdr)),
-		  nd(.x(3'd3), .y(3'd4), .board_flat(board_flat), .q(qd)),
-		  ndl(.x(3'd2), .y(3'd4), .board_flat(board_flat), .q(qdl)),
-		  nl(.x(3'd2), .y(3'd3), .board_flat(board_flat), .q(ql)),
-		  nul(.x(3'd2), .y(3'd2), .board_flat(board_flat), .q(qul));
-		  
-	// left edge
-	wire qlc, qlu, qld, ql2c, ql2u, ql2d;
-	edgenode nlc(.x(3'd0), .y(3'd3), .board_flat(board_flat), .q(qlc)),
-			 nlu(.x(3'd0), .y(3'd2), .board_flat(board_flat), .q(qlu)),
-			 nld(.x(3'd0), .y(3'd4), .board_flat(board_flat), .q(qld)),
-			 nl2c(.x(3'd1), .y(3'd3), .board_flat(board_flat), .q(ql2c)),
-			 nl2u(.x(3'd1), .y(3'd2), .board_flat(board_flat), .q(ql2u)),
-			 nl2d(.x(3'd1), .y(3'd4), .board_flat(board_flat), .q(ql2d));
-	
-	// right edge
-	wire qrc, qru, qrd, qr2c, qr2u, qr2d;
-	edgenode nrc(.x(3'd6), .y(3'd3), .board_flat(board_flat), .q(qrc)),
-			 nru(.x(3'd6), .y(3'd2), .board_flat(board_flat), .q(qru)),
-			 nrd(.x(3'd6), .y(3'd4), .board_flat(board_flat), .q(qrd)),
-			 nr2c(.x(3'd5), .y(3'd3), .board_flat(board_flat), .q(qr2c)),
-			 nr2u(.x(3'd5), .y(3'd2), .board_flat(board_flat), .q(qr2u)),
-			 nr2d(.x(3'd5), .y(3'd4), .board_flat(board_flat), .q(qr2d));
-	// top edge
-	wire qtc, qtl, qtr, qt2c, qt2l, qt2r;
-	edgenode ntc(.x(3'd3), .y(3'd0), .board_flat(board_flat), .q(qtc)),
-			 ntl(.x(3'd2), .y(3'd0), .board_flat(board_flat), .q(qtl)),
-			 ntr(.x(3'd4), .y(3'd0), .board_flat(board_flat), .q(qtr)),
-			 nt2c(.x(3'd3), .y(3'd1), .board_flat(board_flat), .q(qt2c)),
-			 nt2l(.x(3'd2), .y(3'd1), .board_flat(board_flat), .q(qt2l)),
-			 nt2r(.x(3'd4), .y(3'd1), .board_flat(board_flat), .q(qt2r));
-	// bottom edge
-	wire qbc, qbl, qbr, qb2c, qb2l, qb2r;
-	edgenode nbc(.x(3'd3), .y(3'd6), .board_flat(board_flat), .q(qbc)),
-			 nbl(.x(3'd2), .y(3'd6), .board_flat(board_flat), .q(qbl)),
-			 nbr(.x(3'd4), .y(3'd6), .board_flat(board_flat), .q(qbr)),
-			 nb2c(.x(3'd3), .y(3'd5), .board_flat(board_flat), .q(qb2c)),
-			 nb2l(.x(3'd2), .y(3'd5), .board_flat(board_flat), .q(qb2l)),
-			 nb2r(.x(3'd4), .y(3'd5), .board_flat(board_flat), .q(qb2r));
-	
-	always@(*)
-	begin
-		// center
-		if (qc > 0) state = qc;
-		else if (qu > 0) state = qu;
-		else if (qur > 0) state = qur;
-		else if (qr > 0) state = qr;
-		else if (qdr > 0) state = qdr;
-		else if (qd > 0) state = qd;
-		else if (qdl > 0) state = qdl;
-		else if (ql > 0) state = ql;
-		else if (qul > 0) state = qul;
-		// left
-		else if (qlc > 0) state = qlc;
-		else if (qlu > 0) state = qlu;
-		else if (qld > 0) state = qld;
-		else if (ql2c > 0) state = ql2c;
-		else if (ql2u > 0) state = ql2u;
-		else if (ql2d > 0) state = ql2d;
-		// right
-		else if (qrc > 0) state = qrc;
-		else if (qru > 0) state = qru;
-		else if (qrd > 0) state = qrd;
-		else if (qr2c > 0) state = qr2c;
-		else if (qr2u > 0) state = qr2u;
-		else if (qr2d > 0) state = qr2d;
-		// top
-		else if (qtc > 0) state = qtc;
-		else if (qtl > 0) state = qtl;
-		else if (qtr > 0) state = qtr;
-		else if (qt2c > 0) state = qt2c;
-		else if (qt2l > 0) state = qt2l;
-		else if (qt2r > 0) state = qt2r;
-		// bottom
-		else if (qbc > 0) state = qbc;
-		else if (qbl > 0) state = qbl;
-		else if (qbr > 0) state = qbr;
-		else if (qb2c > 0) state = qb2c;
-		else if (qb2l > 0) state = qb2l;
-		else if (qb2r > 0) state = qb2r;
-
-		else state = 0;
-	end
-	*/
 	
 endmodule
 
@@ -369,10 +316,10 @@ module node(x, y, board_flat, h, v, dil, dir);
 		dr = board[7*(x + 1) + y + 1];
 		dr2 = board[7*(x + 2) + y + 2];
 		
-		h = l == c && l2 == c && r == c && r2 == c;
-		v = u == c && u2 == c && d == c && d2 == c;
-		dil = ul == c && ul2 == c && dr == c && dr2 == c;
-		dir = ur == c && ur2 == c && dl == c && dl2 == c;
+		h = c > 0 && l == c && l2 == c && r == c && r2 == c;
+		v = c > 0 && u == c && u2 == c && d == c && d2 == c;
+		dil = c > 0 && ul == c && ul2 == c && dr == c && dr2 == c;
+		dir = c > 0 && ur == c && ur2 == c && dl == c && dl2 == c;
 	end
 endmodule
 
@@ -401,3 +348,4 @@ module hex_decoder(hex_digit, segments);
             default: segments = 7'h7f;
         endcase
 endmodule
+
